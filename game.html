@@ -6,6 +6,11 @@
     <title>👾 SPACE INVADERS - Retro Space Arcade</title>
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Override animations.js effects for game page */
+        body::after {
+            display: none !important;
+        }
+        
         #gameCanvas {
             display: block;
             margin: 2rem auto;
@@ -15,6 +20,8 @@
                 0 0 40px var(--neon-cyan),
                 inset 0 0 30px rgba(0, 240, 255, 0.2);
             background: #000;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
         }
         
         .game-controls {
@@ -153,14 +160,19 @@
         <p>INSERT COIN TO CONTINUE</p>
     </footer>
 
-    <script src="animations.js"></script>
     <script>
-        // Wait for DOM to be ready
-        window.addEventListener('DOMContentLoaded', function() {
+        // Disable animations.js effects for better game performance
+        document.addEventListener('DOMContentLoaded', function() {
+            // Remove floating shapes that might interfere
+            document.querySelectorAll('.floating-shape').forEach(el => el.remove());
+            
+            // Initialize game
             initGame();
         });
 
-        let canvas, ctx;
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha for better performance
+        
         let gameRunning = false;
         let score = 0;
         let lives = 3;
@@ -170,7 +182,15 @@
         let alienDamageFlash = new Map();
         let lastTime = 0;
         
-        let player = {};
+        let player = {
+            x: canvas.width / 2 - 20,
+            y: canvas.height - 70,
+            width: 40,
+            height: 25,
+            speed: 350,
+            dx: 0
+        };
+        
         let canShoot = true;
         let shootCooldown = 250;
         let lastShootTime = 0;
@@ -252,18 +272,6 @@
         let keys = {};
         
         function initGame() {
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d');
-            
-            player = {
-                x: canvas.width / 2 - 20,
-                y: canvas.height - 70,
-                width: 40,
-                height: 25,
-                speed: 350,
-                dx: 0
-            };
-            
             createAliens();
             createShields();
             updateScore();
@@ -414,7 +422,7 @@
             const flashRed = isDamaged && Math.floor(currentTime / 100) % 2 === 0;
             
             ctx.fillStyle = flashRed ? '#FF0000' : '#00F0FF';
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 10; // Reduced shadow for performance
             ctx.shadowColor = flashRed ? '#FF0000' : '#00F0FF';
             
             ctx.fillRect(player.x, player.y, player.width, player.height);
@@ -434,7 +442,7 @@
                 const flashRed = isDamaged && Math.floor(currentTime / 50) % 2 === 0;
                 
                 ctx.fillStyle = flashRed ? '#FF0000' : alien.type.color;
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = 8;
                 ctx.shadowColor = flashRed ? '#FF0000' : alien.type.color;
                 
                 const cx = alien.x + alien.width / 2;
@@ -496,7 +504,7 @@
         function drawLives() {
             ctx.fillStyle = '#00F0FF';
             ctx.font = '14px Arial';
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 5;
             ctx.shadowColor = '#00F0FF';
             ctx.fillText('LIVES:', 10, 25);
             
@@ -509,6 +517,7 @@
         
         function drawShields() {
             ctx.fillStyle = '#00FF00';
+            ctx.shadowBlur = 0;
             shields.forEach(shield => {
                 shield.blocks.forEach(block => {
                     if (block.alive) {
@@ -524,7 +533,7 @@
         }
         
         function drawBullets() {
-            ctx.shadowBlur = 15;
+            ctx.shadowBlur = 10;
             ctx.fillStyle = '#FFFF00';
             ctx.shadowColor = '#FFFF00';
             bullets.forEach(bullet => {
@@ -534,7 +543,7 @@
         }
         
         function drawBombs() {
-            ctx.shadowBlur = 15;
+            ctx.shadowBlur = 10;
             alienBombs.forEach(bomb => {
                 if (bomb.type === 'laser') {
                     ctx.fillStyle = '#00FFFF';
@@ -630,24 +639,14 @@
                     alien.lastShootTime = currentTime;
                     
                     if (alien.type.bombType === 'spread') {
-                        alienBombs.push({
-                            x: alien.x + alien.width / 2,
-                            y: alien.y + alien.height,
-                            type: alien.type.bombType,
-                            dx: 0
-                        });
-                        alienBombs.push({
-                            x: alien.x + alien.width / 2,
-                            y: alien.y + alien.height,
-                            type: alien.type.bombType,
-                            dx: -40
-                        });
-                        alienBombs.push({
-                            x: alien.x + alien.width / 2,
-                            y: alien.y + alien.height,
-                            type: alien.type.bombType,
-                            dx: 40
-                        });
+                        for (let dx of [0, -40, 40]) {
+                            alienBombs.push({
+                                x: alien.x + alien.width / 2,
+                                y: alien.y + alien.height,
+                                type: alien.type.bombType,
+                                dx: dx
+                            });
+                        }
                     } else if (alien.type.bombType === 'laser') {
                         alienBombs.push({
                             x: alien.x + alien.width / 2,
@@ -766,15 +765,16 @@
             ctx.fillStyle = '#0a0015';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            ctx.strokeStyle = 'rgba(188, 19, 254, 0.08)';
+            // Simplified grid for better performance
+            ctx.strokeStyle = 'rgba(188, 19, 254, 0.1)';
             ctx.lineWidth = 1;
-            for (let i = 0; i < canvas.width; i += 30) {
+            for (let i = 0; i < canvas.width; i += 40) {
                 ctx.beginPath();
                 ctx.moveTo(i, 0);
                 ctx.lineTo(i, canvas.height);
                 ctx.stroke();
             }
-            for (let i = 0; i < canvas.height; i += 30) {
+            for (let i = 0; i < canvas.height; i += 40) {
                 ctx.beginPath();
                 ctx.moveTo(0, i);
                 ctx.lineTo(canvas.width, i);
@@ -783,7 +783,6 @@
         }
         
         function drawInitialState() {
-            if (!ctx) return;
             clear();
             drawLives();
             drawShields();
