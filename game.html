@@ -100,8 +100,9 @@
         <div class="content-box">
             <h2>ARCADE MODE ACTIVATED</h2>
             <p style="text-align: center;">
-                Welcome to the bonus stage! Defend Earth from the alien invasion. Use ARROW KEYS to move and SPACEBAR to fire.
-                Destroy all aliens before they reach the planet. Good luck, space warrior!
+                Alright, time for the bonus stage! Defend Earth from the aliens. Use arrow keys to move, 
+                spacebar to shoot. Destroy all the aliens before they reach the bottom. Hide behind the 
+                shields but they'll break down over time. Let's go!
             </p>
 
             <div class="game-info">
@@ -125,12 +126,12 @@
 
             <h3>HOW TO PLAY</h3>
             <ul class="styled-list">
-                <li>Use LEFT and RIGHT ARROW keys to move your ship</li>
-                <li>Press SPACEBAR to fire lasers at the invading aliens</li>
-                <li>Destroy all aliens before they reach the bottom</li>
-                <li>Watch out for alien bombs - they'll damage your shields!</li>
-                <li>Each level gets faster and more challenging</li>
-                <li>Earn points for every alien destroyed</li>
+                <li>LEFT/RIGHT arrows to move your ship</li>
+                <li>SPACEBAR to fire (watch the cooldown!)</li>
+                <li>Kill all aliens before they reach the bottom</li>
+                <li>Hide behind shields - they break down from hits</li>
+                <li>Different alien types are worth different points</li>
+                <li>Each level adds new alien types and gets tougher</li>
             </ul>
         </div>
 
@@ -140,7 +141,7 @@
     </div>
 
     <footer>
-        <p>© 2025 RETRO SPACE ARCADE | NSI PROJECT</p>
+        <p>© 2025 RETRO SPACE ARCADE | NSI PROJECT made by Nedraw</p>
         <p>INSERT COIN TO CONTINUE</p>
     </footer>
 
@@ -153,7 +154,11 @@
         let score = 0;
         let lives = 3;
         let level = 1;
-        let gameSpeed = 1;
+        
+        // FPS independent timing
+        let lastTime = 0;
+        const TARGET_FPS = 60;
+        const TARGET_FRAME_TIME = 1000 / TARGET_FPS;
         
         // Player
         let player = {
@@ -161,35 +166,107 @@
             y: canvas.height - 60,
             width: 50,
             height: 30,
-            speed: 5,
+            speed: 300, // pixels per second
             dx: 0
         };
         
+        // Shooting cooldown
+        let canShoot = true;
+        let shootCooldown = 500; // ms
+        let lastShootTime = 0;
+        
         // Bullets
         let bullets = [];
-        let bulletSpeed = 7;
+        let bulletSpeed = 400; // pixels per second
+        
+        // Alien types - different scores and appearances
+        const ALIEN_TYPES = {
+            BASIC: { points: 10, color: '#39FF14', health: 1 },
+            FAST: { points: 20, color: '#FFFF00', health: 1 },
+            TANK: { points: 30, color: '#FF6600', health: 2 },
+            BOSS: { points: 50, color: '#FF10F0', health: 3 }
+        };
         
         // Aliens
         let aliens = [];
-        let alienRows = 4;
-        let alienCols = 8;
-        let alienSpeed = 1;
+        let alienSpeed = 50; // pixels per second
         let alienDirection = 1;
         let alienBombs = [];
+        let alienMoveTimer = 0;
+        let alienMoveInterval = 500; // ms between moves
+        
+        // Shields
+        let shields = [];
+        const SHIELD_WIDTH = 80;
+        const SHIELD_HEIGHT = 60;
+        const SHIELD_BLOCK_SIZE = 4;
         
         // Keys
         let keys = {};
         
-        // Initialize aliens
+        // Create shields
+        function createShields() {
+            shields = [];
+            const shieldY = canvas.height - 120;
+            const spacing = canvas.width / 4;
+            
+            for (let i = 0; i < 3; i++) {
+                let shield = {
+                    x: spacing * (i + 1) - SHIELD_WIDTH / 2,
+                    y: shieldY,
+                    blocks: []
+                };
+                
+                // Create shield blocks
+                for (let row = 0; row < SHIELD_HEIGHT / SHIELD_BLOCK_SIZE; row++) {
+                    for (let col = 0; col < SHIELD_WIDTH / SHIELD_BLOCK_SIZE; col++) {
+                        // Create dome shape
+                        let centerCol = (SHIELD_WIDTH / SHIELD_BLOCK_SIZE) / 2;
+                        let distance = Math.abs(col - centerCol);
+                        let maxDistance = centerCol;
+                        let heightAtCol = Math.sqrt(1 - (distance / maxDistance) ** 2) * (SHIELD_HEIGHT / SHIELD_BLOCK_SIZE);
+                        
+                        if (row < heightAtCol) {
+                            shield.blocks.push({
+                                x: col * SHIELD_BLOCK_SIZE,
+                                y: row * SHIELD_BLOCK_SIZE,
+                                alive: true
+                            });
+                        }
+                    }
+                }
+                shields.push(shield);
+            }
+        }
+        
+        // Initialize aliens with different types
         function createAliens() {
             aliens = [];
-            for (let row = 0; row < alienRows; row++) {
-                for (let col = 0; col < alienCols; col++) {
+            let rows = Math.min(4 + Math.floor(level / 2), 6);
+            let cols = 8;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    let type;
+                    // Determine alien type based on row and level
+                    if (level >= 5 && row === 0) {
+                        type = ALIEN_TYPES.BOSS;
+                    } else if (level >= 3 && row < 2) {
+                        type = ALIEN_TYPES.TANK;
+                    } else if (level >= 2 && row === rows - 1) {
+                        type = ALIEN_TYPES.FAST;
+                    } else {
+                        type = ALIEN_TYPES.BASIC;
+                    }
+                    
                     aliens.push({
                         x: col * 80 + 50,
                         y: row * 60 + 50,
                         width: 40,
                         height: 30,
+                        type: type,
+                        health: type.health,
+                        maxHealth: type.health,
                         alive: true
                     });
                 }
@@ -206,13 +283,13 @@
             ctx.shadowBlur = 0;
         }
         
-        // Draw aliens
+        // Draw aliens with different types
         function drawAliens() {
             aliens.forEach(alien => {
                 if (alien.alive) {
-                    ctx.fillStyle = '#39FF14';
+                    ctx.fillStyle = alien.type.color;
                     ctx.shadowBlur = 15;
-                    ctx.shadowColor = '#39FF14';
+                    ctx.shadowColor = alien.type.color;
                     
                     // Draw alien shape
                     ctx.fillRect(alien.x, alien.y, alien.width, alien.height);
@@ -221,8 +298,37 @@
                     ctx.fillRect(alien.x - 5, alien.y + 15, 10, 10);
                     ctx.fillRect(alien.x + 35, alien.y + 15, 10, 10);
                     
+                    // Draw health bar for damaged aliens
+                    if (alien.health < alien.maxHealth) {
+                        const barWidth = 30;
+                        const barHeight = 4;
+                        const healthPercent = alien.health / alien.maxHealth;
+                        
+                        ctx.fillStyle = '#FF0000';
+                        ctx.fillRect(alien.x + 5, alien.y - 18, barWidth, barHeight);
+                        ctx.fillStyle = '#00FF00';
+                        ctx.fillRect(alien.x + 5, alien.y - 18, barWidth * healthPercent, barHeight);
+                    }
+                    
                     ctx.shadowBlur = 0;
                 }
+            });
+        }
+        
+        // Draw shields
+        function drawShields() {
+            ctx.fillStyle = '#00FF00';
+            shields.forEach(shield => {
+                shield.blocks.forEach(block => {
+                    if (block.alive) {
+                        ctx.fillRect(
+                            shield.x + block.x,
+                            shield.y + block.y,
+                            SHIELD_BLOCK_SIZE,
+                            SHIELD_BLOCK_SIZE
+                        );
+                    }
+                });
             });
         }
         
@@ -248,9 +354,9 @@
             ctx.shadowBlur = 0;
         }
         
-        // Move player
-        function movePlayer() {
-            player.x += player.dx;
+        // Move player (FPS independent)
+        function movePlayer(deltaTime) {
+            player.x += player.dx * (deltaTime / 1000);
             
             if (player.x < 0) player.x = 0;
             if (player.x + player.width > canvas.width) {
@@ -258,52 +364,60 @@
             }
         }
         
-        // Move aliens
-        function moveAliens() {
-            let hitEdge = false;
+        // Move aliens (FPS independent)
+        function moveAliens(deltaTime) {
+            alienMoveTimer += deltaTime;
             
-            aliens.forEach(alien => {
-                if (alien.alive) {
-                    alien.x += alienSpeed * alienDirection * gameSpeed;
-                    
-                    if (alien.x <= 0 || alien.x + alien.width >= canvas.width) {
-                        hitEdge = true;
-                    }
-                    
-                    // Check if aliens reached bottom
-                    if (alien.y + alien.height >= canvas.height - 60) {
-                        gameOver();
-                    }
-                }
-            });
-            
-            if (hitEdge) {
-                alienDirection *= -1;
+            if (alienMoveTimer >= alienMoveInterval) {
+                alienMoveTimer = 0;
+                
+                let hitEdge = false;
+                
                 aliens.forEach(alien => {
-                    if (alien.alive) alien.y += 20;
+                    if (alien.alive) {
+                        alien.x += alienSpeed * alienDirection;
+                        
+                        if (alien.x <= 0 || alien.x + alien.width >= canvas.width) {
+                            hitEdge = true;
+                        }
+                        
+                        // Check if aliens reached bottom
+                        if (alien.y + alien.height >= canvas.height - 60) {
+                            gameOver();
+                        }
+                    }
                 });
+                
+                if (hitEdge) {
+                    alienDirection *= -1;
+                    aliens.forEach(alien => {
+                        if (alien.alive) alien.y += 20;
+                    });
+                }
             }
         }
         
-        // Move bullets
-        function moveBullets() {
+        // Move bullets (FPS independent)
+        function moveBullets(deltaTime) {
             bullets = bullets.filter(bullet => {
-                bullet.y -= bulletSpeed;
+                bullet.y -= bulletSpeed * (deltaTime / 1000);
                 return bullet.y > 0;
             });
         }
         
-        // Move bombs
-        function moveBombs() {
+        // Move bombs (FPS independent)
+        function moveBombs(deltaTime) {
             alienBombs = alienBombs.filter(bomb => {
-                bomb.y += 4;
+                bomb.y += 200 * (deltaTime / 1000);
                 return bomb.y < canvas.height;
             });
         }
         
-        // Alien shooting
-        function alienShoot() {
-            if (Math.random() < 0.02 * gameSpeed) {
+        // Alien shooting (FPS independent)
+        function alienShoot(deltaTime) {
+            const shootChance = 0.0008 * (1 + level * 0.1) * deltaTime;
+            
+            if (Math.random() < shootChance) {
                 let aliveAliens = aliens.filter(a => a.alive);
                 if (aliveAliens.length > 0) {
                     let shooter = aliveAliens[Math.floor(Math.random() * aliveAliens.length)];
@@ -325,11 +439,59 @@
                         bullet.x + 4 > alien.x &&
                         bullet.y < alien.y + alien.height &&
                         bullet.y + 15 > alien.y) {
-                        alien.alive = false;
+                        
+                        alien.health--;
                         bullets.splice(bIndex, 1);
-                        score += 10;
-                        updateScore();
+                        
+                        if (alien.health <= 0) {
+                            alien.alive = false;
+                            score += alien.type.points;
+                            updateScore();
+                        }
                     }
+                });
+            });
+            
+            // Bullet hits shield
+            bullets.forEach((bullet, bIndex) => {
+                shields.forEach(shield => {
+                    shield.blocks.forEach(block => {
+                        if (block.alive &&
+                            bullet.x < shield.x + block.x + SHIELD_BLOCK_SIZE &&
+                            bullet.x + 4 > shield.x + block.x &&
+                            bullet.y < shield.y + block.y + SHIELD_BLOCK_SIZE &&
+                            bullet.y + 15 > shield.y + block.y) {
+                            block.alive = false;
+                            bullets.splice(bIndex, 1);
+                        }
+                    });
+                });
+            });
+            
+            // Bomb hits shield
+            alienBombs.forEach((bomb, bIndex) => {
+                shields.forEach(shield => {
+                    shield.blocks.forEach(block => {
+                        if (block.alive &&
+                            bomb.x < shield.x + block.x + SHIELD_BLOCK_SIZE &&
+                            bomb.x + 4 > shield.x + block.x &&
+                            bomb.y < shield.y + block.y + SHIELD_BLOCK_SIZE &&
+                            bomb.y + 15 > shield.y + block.y) {
+                            block.alive = false;
+                            alienBombs.splice(bIndex, 1);
+                            
+                            // Damage nearby blocks
+                            shield.blocks.forEach(nearBlock => {
+                                if (nearBlock.alive) {
+                                    let dx = Math.abs((shield.x + nearBlock.x) - (shield.x + block.x));
+                                    let dy = Math.abs((shield.y + nearBlock.y) - (shield.y + block.y));
+                                    if (dx <= SHIELD_BLOCK_SIZE * 2 && dy <= SHIELD_BLOCK_SIZE * 2 && Math.random() < 0.3) {
+                                        nearBlock.alive = false;
+                                    }
+                                }
+                            });
+                        }
+                    });
                 });
             });
             
@@ -357,10 +519,11 @@
         // Next level
         function nextLevel() {
             level++;
-            gameSpeed += 0.3;
-            alienSpeed += 0.2;
+            alienSpeed += 5;
+            alienMoveInterval = Math.max(200, alienMoveInterval - 50);
             updateLevel();
             createAliens();
+            createShields();
             bullets = [];
             alienBombs = [];
         }
@@ -406,30 +569,40 @@
             }
         }
         
-        // Game loop
-        function gameLoop() {
-            if (gameRunning) {
-                clear();
-                drawPlayer();
-                drawAliens();
-                drawBullets();
-                drawBombs();
-                movePlayer();
-                moveAliens();
-                moveBullets();
-                moveBombs();
-                alienShoot();
-                detectCollisions();
-                requestAnimationFrame(gameLoop);
-            }
+        // Game loop with FPS independence
+        function gameLoop(currentTime) {
+            if (!gameRunning) return;
+            
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Cap deltaTime to prevent huge jumps
+            const cappedDelta = Math.min(deltaTime, TARGET_FRAME_TIME * 3);
+            
+            clear();
+            drawShields();
+            drawPlayer();
+            drawAliens();
+            drawBullets();
+            drawBombs();
+            
+            movePlayer(cappedDelta);
+            moveAliens(cappedDelta);
+            moveBullets(cappedDelta);
+            moveBombs(cappedDelta);
+            alienShoot(cappedDelta);
+            detectCollisions();
+            
+            requestAnimationFrame(gameLoop);
         }
         
         // Start game
         function startGame() {
             if (!gameRunning) {
                 gameRunning = true;
+                lastTime = performance.now();
                 document.getElementById('gameOver').style.display = 'none';
-                gameLoop();
+                requestAnimationFrame(gameLoop);
             }
         }
         
@@ -439,12 +612,15 @@
             score = 0;
             lives = 3;
             level = 1;
-            gameSpeed = 1;
-            alienSpeed = 1;
+            alienSpeed = 50;
+            alienMoveInterval = 500;
+            alienMoveTimer = 0;
             bullets = [];
             alienBombs = [];
             player.x = canvas.width / 2 - 25;
+            canShoot = true;
             createAliens();
+            createShields();
             updateScore();
             updateLives();
             updateLevel();
@@ -453,6 +629,7 @@
         
         // Keyboard controls
         document.addEventListener('keydown', (e) => {
+            if (keys[e.key]) return; // Prevent key repeat
             keys[e.key] = true;
             
             if (e.key === 'ArrowLeft') {
@@ -461,12 +638,23 @@
             if (e.key === 'ArrowRight') {
                 player.dx = player.speed;
             }
-            if (e.key === ' ' && gameRunning) {
+            if (e.key === ' ' && gameRunning && canShoot) {
                 e.preventDefault();
-                bullets.push({
-                    x: player.x + player.width / 2 - 2,
-                    y: player.y
-                });
+                const currentTime = performance.now();
+                
+                if (currentTime - lastShootTime >= shootCooldown) {
+                    bullets.push({
+                        x: player.x + player.width / 2 - 2,
+                        y: player.y
+                    });
+                    lastShootTime = currentTime;
+                    canShoot = false;
+                    
+                    // Reset cooldown
+                    setTimeout(() => {
+                        canShoot = true;
+                    }, shootCooldown);
+                }
             }
         });
         
@@ -480,7 +668,9 @@
         
         // Initialize
         createAliens();
+        createShields();
         clear();
+        drawShields();
         drawPlayer();
         drawAliens();
     </script>
