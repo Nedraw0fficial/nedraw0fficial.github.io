@@ -107,7 +107,6 @@
 
             <div class="game-info">
                 <div>SCORE: <span id="score">0</span></div>
-                <div>LIVES: <span id="lives">3</span></div>
                 <div>LEVEL: <span id="level">1</span></div>
             </div>
 
@@ -118,7 +117,7 @@
 
             <div id="gameOver">GAME OVER<br>PRESS RESTART</div>
 
-            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            <canvas id="gameCanvas" width="900" height="700"></canvas>
 
             <div class="image-container" style="margin-top: 3rem;">
                 <img src="https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&h=400&fit=crop" alt="Retro space invaders aesthetic">
@@ -136,11 +135,11 @@
 
             <h3>ALIEN TYPES</h3>
             <ul class="styled-list">
-                <li><strong style="color: #39FF14;">SCOUT (Green)</strong> - Basic alien, shoots regular bombs</li>
-                <li><strong style="color: #FFFF00;">SPEEDER (Yellow)</strong> - Moves faster, rapid fire</li>
-                <li><strong style="color: #FF6600;">TANK (Orange)</strong> - 3 HP, slow but deadly</li>
-                <li><strong style="color: #00FFFF;">SNIPER (Cyan)</strong> - Shoots targeted lasers at you</li>
-                <li><strong style="color: #FF10F0;">BOSS (Pink)</strong> - 5 HP, fires spread shots</li>
+                <li><strong style="color: #39FF14;">SCOUT (Green)</strong> - Basic alien, shoots regular bombs. Square body.</li>
+                <li><strong style="color: #FFFF00;">SPEEDER (Yellow)</strong> - Moves faster, rapid fire. Triangle shape.</li>
+                <li><strong style="color: #FF6600;">TANK (Orange)</strong> - 3 HP, slow but deadly. Wide rectangular body.</li>
+                <li><strong style="color: #00FFFF;">SNIPER (Cyan)</strong> - Shoots targeted lasers. Cross/plus shape.</li>
+                <li><strong style="color: #FF10F0;">BOSS (Pink)</strong> - 5 HP, fires spread shots. Large imposing form.</li>
             </ul>
         </div>
 
@@ -164,129 +163,187 @@
         let lives = 3;
         let level = 1;
         
+        // Visual effects
+        let playerDamageTime = 0;
+        let alienDamageFlash = new Map(); // Track which aliens are flashing
+        
         // FPS independent timing
         let lastTime = 0;
         const TARGET_FPS = 60;
         const TARGET_FRAME_TIME = 1000 / TARGET_FPS;
         
-        // Player
+        // Player - smaller and more spaced
         let player = {
-            x: canvas.width / 2 - 25,
-            y: canvas.height - 60,
-            width: 50,
-            height: 30,
+            x: canvas.width / 2 - 20,
+            y: canvas.height - 70,
+            width: 40,
+            height: 25,
             speed: 350,
             dx: 0
         };
         
-        // Shooting cooldown - MUCH FASTER NOW
+        // Shooting cooldown
         let canShoot = true;
-        let shootCooldown = 250; // 250ms = 4 shots per second
+        let shootCooldown = 250;
         let lastShootTime = 0;
         
-        // Bullets
+        // Bullets - smaller
         let bullets = [];
         let bulletSpeed = 500;
         
-        // Alien types with weights and abilities
+        // Particle effects for explosions
+        let particles = [];
+        
+        // Alien types with MUCH better weight distribution
         const ALIEN_TYPES = {
             SCOUT: {
                 name: 'SCOUT',
                 points: 10,
                 color: '#39FF14',
                 health: 1,
-                weight: 100, // Most common
-                shootRate: 0.0005,
+                baseWeight: 100,
+                shootRate: 0.0002, // Much slower
                 bombType: 'normal',
-                speedMultiplier: 1
+                speedMultiplier: 1,
+                size: 28
             },
             SPEEDER: {
                 name: 'SPEEDER',
                 points: 20,
                 color: '#FFFF00',
                 health: 1,
-                weight: 50,
-                shootRate: 0.001, // Shoots twice as fast
+                baseWeight: 35,
+                shootRate: 0.00035,
                 bombType: 'fast',
-                speedMultiplier: 1.5
+                speedMultiplier: 1.4,
+                size: 26
             },
             TANK: {
                 name: 'TANK',
                 points: 40,
                 color: '#FF6600',
                 health: 3,
-                weight: 30,
-                shootRate: 0.0003,
+                baseWeight: 15,
+                shootRate: 0.00015,
                 bombType: 'heavy',
-                speedMultiplier: 0.7
+                speedMultiplier: 0.7,
+                size: 32
             },
             SNIPER: {
                 name: 'SNIPER',
                 points: 50,
                 color: '#00FFFF',
                 health: 2,
-                weight: 20,
-                shootRate: 0.0004,
-                bombType: 'laser', // Aims at player
-                speedMultiplier: 1
+                baseWeight: 8,
+                shootRate: 0.00025,
+                bombType: 'laser',
+                speedMultiplier: 1,
+                size: 30
             },
             BOSS: {
                 name: 'BOSS',
                 points: 100,
                 color: '#FF10F0',
                 health: 5,
-                weight: 5, // Very rare
-                shootRate: 0.0008,
-                bombType: 'spread', // Shoots 3 bombs
-                speedMultiplier: 0.8
+                baseWeight: 2,
+                shootRate: 0.0003,
+                bombType: 'spread',
+                speedMultiplier: 0.8,
+                size: 38
             }
         };
         
-        // Aliens
+        // Aliens - more spaced out
         let aliens = [];
-        let alienSpeed = 50;
+        let alienSpeed = 40; // Slower initial speed
         let alienDirection = 1;
         let alienBombs = [];
         let alienMoveTimer = 0;
-        let alienMoveInterval = 500;
+        let alienMoveInterval = 600; // Slower movement
         
-        // Shields
+        // Shields - smaller and more spaced
         let shields = [];
-        const SHIELD_WIDTH = 80;
-        const SHIELD_HEIGHT = 60;
-        const SHIELD_BLOCK_SIZE = 4;
+        const SHIELD_WIDTH = 70;
+        const SHIELD_HEIGHT = 50;
+        const SHIELD_BLOCK_SIZE = 3;
         
         // Keys
         let keys = {};
         
-        // Weighted random alien type selection
+        // Create explosion particles
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 200,
+                    vy: (Math.random() - 0.5) * 200,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+        
+        // Update and draw particles
+        function updateParticles(deltaTime) {
+            particles = particles.filter(p => {
+                p.x += p.vx * (deltaTime / 1000);
+                p.y += p.vy * (deltaTime / 1000);
+                p.life -= deltaTime / 500;
+                return p.life > 0;
+            });
+        }
+        
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        // Weighted random with level scaling
         function getRandomAlienType(currentLevel) {
             const types = Object.values(ALIEN_TYPES);
-            
-            // Adjust weights based on level
             let weightedTypes = [];
+            
             types.forEach(type => {
-                // Calculate adjusted weight: higher level = more likely to get rare aliens
-                let adjustedWeight = type.weight;
+                let weight = type.baseWeight;
                 
-                // Reduce weight of common aliens as level increases
-                if (type.name === 'SCOUT') {
-                    adjustedWeight = Math.max(20, type.weight - (currentLevel * 5));
+                // Level 1-2: Mostly scouts
+                if (currentLevel <= 2) {
+                    if (type.name === 'SCOUT') weight = 200;
+                    if (type.name === 'SPEEDER') weight = 30;
+                    if (type.name === 'TANK') weight = 5;
+                    if (type.name === 'SNIPER') weight = 0;
+                    if (type.name === 'BOSS') weight = 0;
+                }
+                // Level 3-4: Introduce variety
+                else if (currentLevel <= 4) {
+                    if (type.name === 'SCOUT') weight = 120;
+                    if (type.name === 'SPEEDER') weight = 50;
+                    if (type.name === 'TANK') weight = 20;
+                    if (type.name === 'SNIPER') weight = 5;
+                    if (type.name === 'BOSS') weight = 0;
+                }
+                // Level 5-7: More variety
+                else if (currentLevel <= 7) {
+                    if (type.name === 'SCOUT') weight = 80;
+                    if (type.name === 'SPEEDER') weight = 50;
+                    if (type.name === 'TANK') weight = 30;
+                    if (type.name === 'SNIPER') weight = 15;
+                    if (type.name === 'BOSS') weight = 3;
+                }
+                // Level 8+: Full chaos
+                else {
+                    if (type.name === 'SCOUT') weight = Math.max(40, type.baseWeight - (currentLevel * 2));
+                    if (type.name === 'BOSS') weight = type.baseWeight + (currentLevel - 7);
+                    if (type.name === 'SNIPER') weight = type.baseWeight + (currentLevel - 5);
+                    if (type.name === 'TANK') weight = type.baseWeight + (currentLevel - 3);
                 }
                 
-                // Increase weight of rare aliens as level increases
-                if (type.name === 'BOSS') {
-                    adjustedWeight = type.weight + (currentLevel * 2);
-                }
-                if (type.name === 'SNIPER') {
-                    adjustedWeight = type.weight + (currentLevel * 3);
-                }
-                if (type.name === 'TANK') {
-                    adjustedWeight = type.weight + (currentLevel * 4);
-                }
-                
-                // Add type multiple times based on weight
-                for (let i = 0; i < adjustedWeight; i++) {
+                for (let i = 0; i < weight; i++) {
                     weightedTypes.push(type);
                 }
             });
@@ -294,20 +351,21 @@
             return weightedTypes[Math.floor(Math.random() * weightedTypes.length)];
         }
         
-        // Create shields
+        // Create shields - more spaced
         function createShields() {
             shields = [];
-            const shieldY = canvas.height - 120;
-            const spacing = canvas.width / 4;
+            const shieldY = canvas.height - 130;
+            const totalWidth = canvas.width * 0.8;
+            const startX = canvas.width * 0.1;
+            const spacing = totalWidth / 3;
             
             for (let i = 0; i < 3; i++) {
                 let shield = {
-                    x: spacing * (i + 1) - SHIELD_WIDTH / 2,
+                    x: startX + spacing * i + spacing / 2 - SHIELD_WIDTH / 2,
                     y: shieldY,
                     blocks: []
                 };
                 
-                // Create shield blocks in dome shape
                 for (let row = 0; row < SHIELD_HEIGHT / SHIELD_BLOCK_SIZE; row++) {
                     for (let col = 0; col < SHIELD_WIDTH / SHIELD_BLOCK_SIZE; col++) {
                         let centerCol = (SHIELD_WIDTH / SHIELD_BLOCK_SIZE) / 2;
@@ -328,21 +386,27 @@
             }
         }
         
-        // Initialize aliens with weighted random types
+        // Create aliens - more spaced
         function createAliens() {
             aliens = [];
-            let rows = Math.min(4 + Math.floor(level / 3), 7);
-            let cols = 8;
+            alienDamageFlash.clear();
+            let rows = Math.min(3 + Math.floor(level / 3), 6);
+            let cols = 9;
+            
+            const totalWidth = canvas.width * 0.85;
+            const startX = canvas.width * 0.075;
+            const colSpacing = totalWidth / (cols - 1);
+            const rowSpacing = 55;
             
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < cols; col++) {
                     let type = getRandomAlienType(level);
                     
                     aliens.push({
-                        x: col * 80 + 50,
-                        y: row * 60 + 50,
-                        width: 40,
-                        height: 30,
+                        x: startX + col * colSpacing - type.size / 2,
+                        y: 60 + row * rowSpacing,
+                        width: type.size,
+                        height: type.size,
                         type: type,
                         health: type.health,
                         maxHealth: type.health,
@@ -353,64 +417,119 @@
             }
         }
         
-        // Draw player
-        function drawPlayer() {
-            ctx.fillStyle = '#00F0FF';
+        // Draw player with damage flash
+        function drawPlayer(currentTime) {
+            const isDamaged = currentTime - playerDamageTime < 500;
+            const flashRed = isDamaged && Math.floor(currentTime / 100) % 2 === 0;
+            
+            ctx.fillStyle = flashRed ? '#FF0000' : '#00F0FF';
             ctx.shadowBlur = 20;
-            ctx.shadowColor = '#00F0FF';
+            ctx.shadowColor = flashRed ? '#FF0000' : '#00F0FF';
+            
+            // Ship body
             ctx.fillRect(player.x, player.y, player.width, player.height);
-            ctx.fillRect(player.x + 15, player.y - 10, 20, 10);
+            // Cockpit
+            ctx.fillRect(player.x + 12, player.y - 8, 16, 8);
+            // Wings
+            ctx.fillRect(player.x - 5, player.y + 15, 10, 8);
+            ctx.fillRect(player.x + player.width - 5, player.y + 15, 10, 8);
+            
             ctx.shadowBlur = 0;
         }
         
-        // Draw aliens with their unique colors
-        function drawAliens() {
+        // Draw aliens with unique shapes and damage flash
+        function drawAliens(currentTime) {
             aliens.forEach(alien => {
-                if (alien.alive) {
-                    ctx.fillStyle = alien.type.color;
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = alien.type.color;
-                    
-                    // Different shapes for different types
-                    if (alien.type.name === 'BOSS') {
-                        // Bigger, meaner looking
-                        ctx.fillRect(alien.x - 5, alien.y, alien.width + 10, alien.height);
-                        ctx.fillRect(alien.x, alien.y - 10, 15, 10);
-                        ctx.fillRect(alien.x + 25, alien.y - 10, 15, 10);
-                        ctx.fillRect(alien.x - 10, alien.y + 15, 15, 10);
-                        ctx.fillRect(alien.x + 35, alien.y + 15, 15, 10);
-                    } else if (alien.type.name === 'TANK') {
-                        // Bulkier
-                        ctx.fillRect(alien.x, alien.y, alien.width, alien.height + 5);
-                        ctx.fillRect(alien.x + 5, alien.y - 8, 10, 10);
-                        ctx.fillRect(alien.x + 25, alien.y - 8, 10, 10);
-                        ctx.fillRect(alien.x - 5, alien.y + 15, 10, 10);
-                        ctx.fillRect(alien.x + 35, alien.y + 15, 10, 10);
-                    } else {
-                        // Standard shape
-                        ctx.fillRect(alien.x, alien.y, alien.width, alien.height);
-                        ctx.fillRect(alien.x + 5, alien.y - 10, 10, 10);
-                        ctx.fillRect(alien.x + 25, alien.y - 10, 10, 10);
-                        ctx.fillRect(alien.x - 5, alien.y + 15, 10, 10);
-                        ctx.fillRect(alien.x + 35, alien.y + 15, 10, 10);
-                    }
-                    
-                    // Draw health bar for damaged aliens
-                    if (alien.health < alien.maxHealth) {
-                        const barWidth = 30;
-                        const barHeight = 4;
-                        const healthPercent = alien.health / alien.maxHealth;
-                        
-                        ctx.shadowBlur = 0;
-                        ctx.fillStyle = '#FF0000';
-                        ctx.fillRect(alien.x + 5, alien.y - 18, barWidth, barHeight);
-                        ctx.fillStyle = '#00FF00';
-                        ctx.fillRect(alien.x + 5, alien.y - 18, barWidth * healthPercent, barHeight);
-                    }
+                if (!alien.alive) return;
+                
+                const alienId = aliens.indexOf(alien);
+                const damageFlash = alienDamageFlash.get(alienId);
+                const isDamaged = damageFlash && currentTime - damageFlash < 200;
+                const flashRed = isDamaged && Math.floor(currentTime / 50) % 2 === 0;
+                
+                ctx.fillStyle = flashRed ? '#FF0000' : alien.type.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = flashRed ? '#FF0000' : alien.type.color;
+                
+                const cx = alien.x + alien.width / 2;
+                const cy = alien.y + alien.height / 2;
+                const s = alien.width / 2;
+                
+                // Different shapes for each type
+                if (alien.type.name === 'SCOUT') {
+                    // Square with antennae
+                    ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
+                    ctx.fillRect(alien.x + 8, alien.y - 6, 4, 6);
+                    ctx.fillRect(alien.x + alien.width - 12, alien.y - 6, 4, 6);
+                    ctx.fillRect(alien.x, alien.y + 12, 5, 8);
+                    ctx.fillRect(alien.x + alien.width - 5, alien.y + 12, 5, 8);
+                }
+                else if (alien.type.name === 'SPEEDER') {
+                    // Triangle/arrow shape
+                    ctx.beginPath();
+                    ctx.moveTo(cx, alien.y);
+                    ctx.lineTo(alien.x + alien.width, alien.y + alien.height);
+                    ctx.lineTo(alien.x, alien.y + alien.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    // Thrusters
+                    ctx.fillRect(alien.x + 5, alien.y + alien.height - 5, 6, 8);
+                    ctx.fillRect(alien.x + alien.width - 11, alien.y + alien.height - 5, 6, 8);
+                }
+                else if (alien.type.name === 'TANK') {
+                    // Wide rectangle with armor
+                    ctx.fillRect(alien.x, alien.y + 5, alien.width, alien.height - 10);
+                    ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
+                    ctx.fillRect(alien.x - 3, alien.y + 10, 8, 8);
+                    ctx.fillRect(alien.x + alien.width - 5, alien.y + 10, 8, 8);
+                }
+                else if (alien.type.name === 'SNIPER') {
+                    // Cross/plus shape
+                    ctx.fillRect(cx - 4, alien.y, 8, alien.height);
+                    ctx.fillRect(alien.x, cy - 4, alien.width, 8);
+                    // Targeting laser
+                    ctx.fillRect(cx - 2, alien.y - 8, 4, 8);
+                }
+                else if (alien.type.name === 'BOSS') {
+                    // Large imposing form
+                    ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
+                    ctx.fillRect(alien.x, alien.y + 8, alien.width, alien.height - 16);
+                    ctx.fillRect(alien.x + 2, alien.y - 6, 10, 8);
+                    ctx.fillRect(alien.x + alien.width - 12, alien.y - 6, 10, 8);
+                    ctx.fillRect(alien.x - 5, alien.y + 10, 10, 10);
+                    ctx.fillRect(alien.x + alien.width - 5, alien.y + 10, 10, 10);
+                }
+                
+                // Health bar for damaged aliens
+                if (alien.health < alien.maxHealth) {
+                    const barWidth = alien.width - 8;
+                    const barHeight = 3;
+                    const healthPercent = alien.health / alien.maxHealth;
                     
                     ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#330000';
+                    ctx.fillRect(alien.x + 4, alien.y - 10, barWidth, barHeight);
+                    ctx.fillStyle = '#00FF00';
+                    ctx.fillRect(alien.x + 4, alien.y - 10, barWidth * healthPercent, barHeight);
                 }
+                
+                ctx.shadowBlur = 0;
             });
+        }
+        
+        // Draw lives indicator on canvas
+        function drawLives() {
+            ctx.fillStyle = '#00F0FF';
+            ctx.font = '14px "Press Start 2P"';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00F0FF';
+            ctx.fillText('LIVES:', 10, 25);
+            
+            for (let i = 0; i < lives; i++) {
+                ctx.fillRect(90 + i * 35, 10, 25, 20);
+                ctx.fillRect(100 + i * 35, 5, 10, 6);
+            }
+            ctx.shadowBlur = 0;
         }
         
         // Draw shields
@@ -436,27 +555,27 @@
             bullets.forEach(bullet => {
                 ctx.fillStyle = '#FFFF00';
                 ctx.shadowColor = '#FFFF00';
-                ctx.fillRect(bullet.x, bullet.y, 4, 15);
+                ctx.fillRect(bullet.x, bullet.y, 3, 12);
             });
             ctx.shadowBlur = 0;
         }
         
-        // Draw alien bombs with different visuals
+        // Draw bombs
         function drawBombs() {
             ctx.shadowBlur = 15;
             alienBombs.forEach(bomb => {
                 if (bomb.type === 'laser') {
                     ctx.fillStyle = '#00FFFF';
                     ctx.shadowColor = '#00FFFF';
-                    ctx.fillRect(bomb.x - 1, bomb.y, 6, 20);
+                    ctx.fillRect(bomb.x - 1, bomb.y, 5, 16);
                 } else if (bomb.type === 'heavy') {
                     ctx.fillStyle = '#FF6600';
                     ctx.shadowColor = '#FF6600';
-                    ctx.fillRect(bomb.x - 2, bomb.y, 8, 12);
+                    ctx.fillRect(bomb.x - 2, bomb.y, 7, 10);
                 } else {
                     ctx.fillStyle = '#FF10F0';
                     ctx.shadowColor = '#FF10F0';
-                    ctx.fillRect(bomb.x, bomb.y, 4, 15);
+                    ctx.fillRect(bomb.x, bomb.y, 3, 12);
                 }
             });
             ctx.shadowBlur = 0;
@@ -472,7 +591,7 @@
             }
         }
         
-        // Move aliens with speed multipliers
+        // Move aliens
         function moveAliens(deltaTime) {
             alienMoveTimer += deltaTime;
             
@@ -498,13 +617,13 @@
                 if (hitEdge) {
                     alienDirection *= -1;
                     aliens.forEach(alien => {
-                        if (alien.alive) alien.y += 20;
+                        if (alien.alive) alien.y += 15;
                     });
                 }
             }
         }
         
-        // Move bullets - PLAYER BULLETS PASS THROUGH SHIELDS!
+        // Move bullets
         function moveBullets(deltaTime) {
             bullets = bullets.filter(bullet => {
                 bullet.y -= bulletSpeed * (deltaTime / 1000);
@@ -512,31 +631,38 @@
             });
         }
         
-        // Move bombs with different speeds
+        // Move bombs
         function moveBombs(deltaTime) {
             alienBombs = alienBombs.filter(bomb => {
-                let speed = 200;
-                if (bomb.type === 'fast') speed = 300;
-                if (bomb.type === 'laser') speed = 350;
-                if (bomb.type === 'heavy') speed = 150;
+                let speed = 180;
+                if (bomb.type === 'fast') speed = 250;
+                if (bomb.type === 'laser') speed = 300;
+                if (bomb.type === 'heavy') speed = 130;
                 
                 bomb.y += speed * (deltaTime / 1000);
+                
+                if (bomb.type === 'laser' && bomb.targetX !== undefined) {
+                    let direction = bomb.targetX > bomb.startX ? 1 : -1;
+                    bomb.x += direction * 80 * (deltaTime / 1000);
+                } else if (bomb.dx) {
+                    bomb.x += bomb.dx * (deltaTime / 1000);
+                }
+                
                 return bomb.y < canvas.height;
             });
         }
         
-        // Alien shooting with unique attacks
+        // Alien shooting
         function alienShoot(deltaTime, currentTime) {
             aliens.forEach(alien => {
                 if (!alien.alive) return;
                 
                 const shootChance = alien.type.shootRate * deltaTime;
                 
-                if (Math.random() < shootChance && currentTime - alien.lastShootTime > 1000) {
+                if (Math.random() < shootChance && currentTime - alien.lastShootTime > 1500) {
                     alien.lastShootTime = currentTime;
                     
                     if (alien.type.bombType === 'spread') {
-                        // Boss shoots 3 bombs in spread pattern
                         alienBombs.push({
                             x: alien.x + alien.width / 2,
                             y: alien.y + alien.height,
@@ -547,16 +673,15 @@
                             x: alien.x + alien.width / 2,
                             y: alien.y + alien.height,
                             type: alien.type.bombType,
-                            dx: -50
+                            dx: -40
                         });
                         alienBombs.push({
                             x: alien.x + alien.width / 2,
                             y: alien.y + alien.height,
                             type: alien.type.bombType,
-                            dx: 50
+                            dx: 40
                         });
                     } else if (alien.type.bombType === 'laser') {
-                        // Sniper aims at player
                         alienBombs.push({
                             x: alien.x + alien.width / 2,
                             y: alien.y + alien.height,
@@ -565,7 +690,6 @@
                             startX: alien.x + alien.width / 2
                         });
                     } else {
-                        // Normal bomb
                         alienBombs.push({
                             x: alien.x + alien.width / 2,
                             y: alien.y + alien.height,
@@ -577,62 +701,49 @@
             });
         }
         
-        // Update bomb positions with special movements
-        function updateBombs(deltaTime) {
-            alienBombs.forEach(bomb => {
-                if (bomb.type === 'laser' && bomb.targetX !== undefined) {
-                    // Laser homes in on where player was
-                    let direction = bomb.targetX > bomb.startX ? 1 : -1;
-                    bomb.x += direction * 100 * (deltaTime / 1000);
-                } else if (bomb.dx) {
-                    // Spread pattern
-                    bomb.x += bomb.dx * (deltaTime / 1000);
-                }
-            });
-        }
-        
         // Collision detection
-        function detectCollisions() {
+        function detectCollisions(currentTime) {
             // Bullet hits alien
             bullets.forEach((bullet, bIndex) => {
-                aliens.forEach(alien => {
+                aliens.forEach((alien, aIndex) => {
                     if (alien.alive &&
                         bullet.x < alien.x + alien.width &&
-                        bullet.x + 4 > alien.x &&
+                        bullet.x + 3 > alien.x &&
                         bullet.y < alien.y + alien.height &&
-                        bullet.y + 15 > alien.y) {
+                        bullet.y + 12 > alien.y) {
                         
                         alien.health--;
                         bullets.splice(bIndex, 1);
+                        alienDamageFlash.set(aIndex, currentTime);
                         
                         if (alien.health <= 0) {
                             alien.alive = false;
                             score += alien.type.points;
+                            createExplosion(alien.x + alien.width / 2, alien.y + alien.height / 2, alien.type.color);
                             updateScore();
                         }
                     }
                 });
             });
             
-            // Bomb hits shield (bullets DON'T hit shields!)
+            // Bomb hits shield
             alienBombs.forEach((bomb, bIndex) => {
                 shields.forEach(shield => {
                     shield.blocks.forEach(block => {
                         if (block.alive &&
                             bomb.x < shield.x + block.x + SHIELD_BLOCK_SIZE &&
-                            bomb.x + 4 > shield.x + block.x &&
+                            bomb.x + 3 > shield.x + block.x &&
                             bomb.y < shield.y + block.y + SHIELD_BLOCK_SIZE &&
-                            bomb.y + 15 > shield.y + block.y) {
+                            bomb.y + 12 > shield.y + block.y) {
                             block.alive = false;
                             alienBombs.splice(bIndex, 1);
                             
-                            // Heavy bombs do more damage
                             if (bomb.type === 'heavy') {
                                 shield.blocks.forEach(nearBlock => {
                                     if (nearBlock.alive) {
                                         let dx = Math.abs((shield.x + nearBlock.x) - (shield.x + block.x));
                                         let dy = Math.abs((shield.y + nearBlock.y) - (shield.y + block.y));
-                                        if (dx <= SHIELD_BLOCK_SIZE * 3 && dy <= SHIELD_BLOCK_SIZE * 3 && Math.random() < 0.5) {
+                                        if (dx <= SHIELD_BLOCK_SIZE * 2 && dy <= SHIELD_BLOCK_SIZE * 2 && Math.random() < 0.4) {
                                             nearBlock.alive = false;
                                         }
                                     }
@@ -646,11 +757,13 @@
             // Bomb hits player
             alienBombs.forEach((bomb, bIndex) => {
                 if (bomb.x < player.x + player.width &&
-                    bomb.x + 4 > player.x &&
+                    bomb.x + 3 > player.x &&
                     bomb.y < player.y + player.height &&
-                    bomb.y + 15 > player.y) {
+                    bomb.y + 12 > player.y) {
                     alienBombs.splice(bIndex, 1);
                     lives--;
+                    playerDamageTime = currentTime;
+                    createExplosion(player.x + player.width / 2, player.y + player.height / 2, '#00F0FF');
                     updateLives();
                     if (lives <= 0) {
                         gameOver();
@@ -658,7 +771,6 @@
                 }
             });
             
-            // Check if all aliens destroyed
             if (aliens.every(alien => !alien.alive)) {
                 nextLevel();
             }
@@ -667,8 +779,8 @@
         // Next level
         function nextLevel() {
             level++;
-            alienSpeed += 3;
-            alienMoveInterval = Math.max(150, alienMoveInterval - 30);
+            alienSpeed += 2;
+            alienMoveInterval = Math.max(200, alienMoveInterval - 25);
             updateLevel();
             createAliens();
             createShields();
@@ -682,7 +794,7 @@
         }
         
         function updateLives() {
-            document.getElementById('lives').textContent = lives;
+            // Lives shown on canvas now
         }
         
         function updateLevel() {
@@ -700,16 +812,16 @@
             ctx.fillStyle = '#0a0015';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw grid
-            ctx.strokeStyle = 'rgba(188, 19, 254, 0.1)';
+            // Cooler grid pattern
+            ctx.strokeStyle = 'rgba(188, 19, 254, 0.08)';
             ctx.lineWidth = 1;
-            for (let i = 0; i < canvas.width; i += 20) {
+            for (let i = 0; i < canvas.width; i += 30) {
                 ctx.beginPath();
                 ctx.moveTo(i, 0);
                 ctx.lineTo(i, canvas.height);
                 ctx.stroke();
             }
-            for (let i = 0; i < canvas.height; i += 20) {
+            for (let i = 0; i < canvas.height; i += 30) {
                 ctx.beginPath();
                 ctx.moveTo(0, i);
                 ctx.lineTo(canvas.width, i);
@@ -726,19 +838,21 @@
             const cappedDelta = Math.min(deltaTime, TARGET_FRAME_TIME * 3);
             
             clear();
+            drawLives();
             drawShields();
-            drawPlayer();
-            drawAliens();
+            drawPlayer(currentTime);
+            drawAliens(currentTime);
             drawBullets();
             drawBombs();
+            drawParticles();
             
             movePlayer(cappedDelta);
             moveAliens(cappedDelta);
             moveBullets(cappedDelta);
             moveBombs(cappedDelta);
-            updateBombs(cappedDelta);
             alienShoot(cappedDelta, currentTime);
-            detectCollisions();
+            detectCollisions(currentTime);
+            updateParticles(cappedDelta);
             
             requestAnimationFrame(gameLoop);
         }
@@ -759,12 +873,15 @@
             score = 0;
             lives = 3;
             level = 1;
-            alienSpeed = 50;
-            alienMoveInterval = 500;
+            alienSpeed = 40;
+            alienMoveInterval = 600;
             alienMoveTimer = 0;
             bullets = [];
             alienBombs = [];
-            player.x = canvas.width / 2 - 25;
+            particles = [];
+            alienDamageFlash.clear();
+            playerDamageTime = 0;
+            player.x = canvas.width / 2 - 20;
             canShoot = true;
             createAliens();
             createShields();
@@ -791,7 +908,7 @@
                 
                 if (currentTime - lastShootTime >= shootCooldown) {
                     bullets.push({
-                        x: player.x + player.width / 2 - 2,
+                        x: player.x + player.width / 2 - 1.5,
                         y: player.y
                     });
                     lastShootTime = currentTime;
@@ -816,9 +933,10 @@
         createAliens();
         createShields();
         clear();
+        drawLives();
         drawShields();
-        drawPlayer();
-        drawAliens();
+        drawPlayer(0);
+        drawAliens(0);
     </script>
 </body>
 </html>
