@@ -165,12 +165,14 @@
         
         // Visual effects
         let playerDamageTime = 0;
-        let alienDamageFlash = new Map();
+        let alienDamageFlash = new Map(); // Track which aliens are flashing
         
         // FPS independent timing
         let lastTime = 0;
+        const TARGET_FPS = 60;
+        const TARGET_FRAME_TIME = 1000 / TARGET_FPS;
         
-        // Player
+        // Player - smaller and more spaced
         let player = {
             x: canvas.width / 2 - 20,
             y: canvas.height - 70,
@@ -180,19 +182,19 @@
             dx: 0
         };
         
-        // Shooting
+        // Shooting cooldown
         let canShoot = true;
         let shootCooldown = 250;
         let lastShootTime = 0;
         
-        // Bullets
+        // Bullets - smaller
         let bullets = [];
         let bulletSpeed = 500;
         
-        // Particles
+        // Particle effects for explosions
         let particles = [];
         
-        // Alien types
+        // Alien types with MUCH better weight distribution
         const ALIEN_TYPES = {
             SCOUT: {
                 name: 'SCOUT',
@@ -200,7 +202,7 @@
                 color: '#39FF14',
                 health: 1,
                 baseWeight: 100,
-                shootRate: 0.0002,
+                shootRate: 0.0002, // Much slower
                 bombType: 'normal',
                 speedMultiplier: 1,
                 size: 28
@@ -251,15 +253,15 @@
             }
         };
         
-        // Aliens
+        // Aliens - more spaced out
         let aliens = [];
-        let alienSpeed = 40;
+        let alienSpeed = 40; // Slower initial speed
         let alienDirection = 1;
         let alienBombs = [];
         let alienMoveTimer = 0;
-        let alienMoveInterval = 600;
+        let alienMoveInterval = 600; // Slower movement
         
-        // Shields
+        // Shields - smaller and more spaced
         let shields = [];
         const SHIELD_WIDTH = 70;
         const SHIELD_HEIGHT = 50;
@@ -282,7 +284,7 @@
             }
         }
         
-        // Update particles
+        // Update and draw particles
         function updateParticles(deltaTime) {
             particles = particles.filter(p => {
                 p.x += p.vx * (deltaTime / 1000);
@@ -292,7 +294,6 @@
             });
         }
         
-        // Draw particles
         function drawParticles() {
             particles.forEach(p => {
                 ctx.globalAlpha = p.life;
@@ -302,7 +303,7 @@
             ctx.globalAlpha = 1;
         }
         
-        // Get random alien type with level-based weights
+        // Weighted random with level scaling
         function getRandomAlienType(currentLevel) {
             const types = Object.values(ALIEN_TYPES);
             let weightedTypes = [];
@@ -310,6 +311,7 @@
             types.forEach(type => {
                 let weight = type.baseWeight;
                 
+                // Level 1-2: Mostly scouts
                 if (currentLevel <= 2) {
                     if (type.name === 'SCOUT') weight = 200;
                     if (type.name === 'SPEEDER') weight = 30;
@@ -317,6 +319,7 @@
                     if (type.name === 'SNIPER') weight = 0;
                     if (type.name === 'BOSS') weight = 0;
                 }
+                // Level 3-4: Introduce variety
                 else if (currentLevel <= 4) {
                     if (type.name === 'SCOUT') weight = 120;
                     if (type.name === 'SPEEDER') weight = 50;
@@ -324,6 +327,7 @@
                     if (type.name === 'SNIPER') weight = 5;
                     if (type.name === 'BOSS') weight = 0;
                 }
+                // Level 5-7: More variety
                 else if (currentLevel <= 7) {
                     if (type.name === 'SCOUT') weight = 80;
                     if (type.name === 'SPEEDER') weight = 50;
@@ -331,6 +335,7 @@
                     if (type.name === 'SNIPER') weight = 15;
                     if (type.name === 'BOSS') weight = 3;
                 }
+                // Level 8+: Full chaos
                 else {
                     if (type.name === 'SCOUT') weight = Math.max(40, type.baseWeight - (currentLevel * 2));
                     if (type.name === 'BOSS') weight = type.baseWeight + (currentLevel - 7);
@@ -346,7 +351,7 @@
             return weightedTypes[Math.floor(Math.random() * weightedTypes.length)];
         }
         
-        // Create shields
+        // Create shields - more spaced
         function createShields() {
             shields = [];
             const shieldY = canvas.height - 130;
@@ -381,7 +386,7 @@
             }
         }
         
-        // Create aliens
+        // Create aliens - more spaced
         function createAliens() {
             aliens = [];
             alienDamageFlash.clear();
@@ -412,7 +417,7 @@
             }
         }
         
-        // Draw player
+        // Draw player with damage flash
         function drawPlayer(currentTime) {
             const isDamaged = currentTime - playerDamageTime < 500;
             const flashRed = isDamaged && Math.floor(currentTime / 100) % 2 === 0;
@@ -421,20 +426,24 @@
             ctx.shadowBlur = 20;
             ctx.shadowColor = flashRed ? '#FF0000' : '#00F0FF';
             
+            // Ship body
             ctx.fillRect(player.x, player.y, player.width, player.height);
+            // Cockpit
             ctx.fillRect(player.x + 12, player.y - 8, 16, 8);
+            // Wings
             ctx.fillRect(player.x - 5, player.y + 15, 10, 8);
             ctx.fillRect(player.x + player.width - 5, player.y + 15, 10, 8);
             
             ctx.shadowBlur = 0;
         }
         
-        // Draw aliens
+        // Draw aliens with unique shapes and damage flash
         function drawAliens(currentTime) {
-            aliens.forEach((alien, aIndex) => {
+            aliens.forEach(alien => {
                 if (!alien.alive) return;
                 
-                const damageFlash = alienDamageFlash.get(aIndex);
+                const alienId = aliens.indexOf(alien);
+                const damageFlash = alienDamageFlash.get(alienId);
                 const isDamaged = damageFlash && currentTime - damageFlash < 200;
                 const flashRed = isDamaged && Math.floor(currentTime / 50) % 2 === 0;
                 
@@ -444,8 +453,11 @@
                 
                 const cx = alien.x + alien.width / 2;
                 const cy = alien.y + alien.height / 2;
+                const s = alien.width / 2;
                 
+                // Different shapes for each type
                 if (alien.type.name === 'SCOUT') {
+                    // Square with antennae
                     ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
                     ctx.fillRect(alien.x + 8, alien.y - 6, 4, 6);
                     ctx.fillRect(alien.x + alien.width - 12, alien.y - 6, 4, 6);
@@ -453,27 +465,33 @@
                     ctx.fillRect(alien.x + alien.width - 5, alien.y + 12, 5, 8);
                 }
                 else if (alien.type.name === 'SPEEDER') {
+                    // Triangle/arrow shape
                     ctx.beginPath();
                     ctx.moveTo(cx, alien.y);
                     ctx.lineTo(alien.x + alien.width, alien.y + alien.height);
                     ctx.lineTo(alien.x, alien.y + alien.height);
                     ctx.closePath();
                     ctx.fill();
+                    // Thrusters
                     ctx.fillRect(alien.x + 5, alien.y + alien.height - 5, 6, 8);
                     ctx.fillRect(alien.x + alien.width - 11, alien.y + alien.height - 5, 6, 8);
                 }
                 else if (alien.type.name === 'TANK') {
+                    // Wide rectangle with armor
                     ctx.fillRect(alien.x, alien.y + 5, alien.width, alien.height - 10);
                     ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
                     ctx.fillRect(alien.x - 3, alien.y + 10, 8, 8);
                     ctx.fillRect(alien.x + alien.width - 5, alien.y + 10, 8, 8);
                 }
                 else if (alien.type.name === 'SNIPER') {
+                    // Cross/plus shape
                     ctx.fillRect(cx - 4, alien.y, 8, alien.height);
                     ctx.fillRect(alien.x, cy - 4, alien.width, 8);
+                    // Targeting laser
                     ctx.fillRect(cx - 2, alien.y - 8, 4, 8);
                 }
                 else if (alien.type.name === 'BOSS') {
+                    // Large imposing form
                     ctx.fillRect(alien.x + 5, alien.y, alien.width - 10, alien.height);
                     ctx.fillRect(alien.x, alien.y + 8, alien.width, alien.height - 16);
                     ctx.fillRect(alien.x + 2, alien.y - 6, 10, 8);
@@ -482,6 +500,7 @@
                     ctx.fillRect(alien.x + alien.width - 5, alien.y + 10, 10, 10);
                 }
                 
+                // Health bar for damaged aliens
                 if (alien.health < alien.maxHealth) {
                     const barWidth = alien.width - 8;
                     const barHeight = 3;
@@ -498,10 +517,10 @@
             });
         }
         
-        // Draw lives
+        // Draw lives indicator on canvas
         function drawLives() {
             ctx.fillStyle = '#00F0FF';
-            ctx.font = '14px Arial';
+            ctx.font = '14px "Press Start 2P"';
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#00F0FF';
             ctx.fillText('LIVES:', 10, 25);
@@ -533,9 +552,9 @@
         // Draw bullets
         function drawBullets() {
             ctx.shadowBlur = 15;
-            ctx.fillStyle = '#FFFF00';
-            ctx.shadowColor = '#FFFF00';
             bullets.forEach(bullet => {
+                ctx.fillStyle = '#FFFF00';
+                ctx.shadowColor = '#FFFF00';
                 ctx.fillRect(bullet.x, bullet.y, 3, 12);
             });
             ctx.shadowBlur = 0;
@@ -745,6 +764,7 @@
                     lives--;
                     playerDamageTime = currentTime;
                     createExplosion(player.x + player.width / 2, player.y + player.height / 2, '#00F0FF');
+                    updateLives();
                     if (lives <= 0) {
                         gameOver();
                     }
@@ -773,6 +793,10 @@
             document.getElementById('score').textContent = score;
         }
         
+        function updateLives() {
+            // Lives shown on canvas now
+        }
+        
         function updateLevel() {
             document.getElementById('level').textContent = level;
         }
@@ -788,6 +812,7 @@
             ctx.fillStyle = '#0a0015';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
+            // Cooler grid pattern
             ctx.strokeStyle = 'rgba(188, 19, 254, 0.08)';
             ctx.lineWidth = 1;
             for (let i = 0; i < canvas.width; i += 30) {
@@ -808,8 +833,9 @@
         function gameLoop(currentTime) {
             if (!gameRunning) return;
             
-            const deltaTime = Math.min(currentTime - lastTime, 50);
+            const deltaTime = currentTime - lastTime;
             lastTime = currentTime;
+            const cappedDelta = Math.min(deltaTime, TARGET_FRAME_TIME * 3);
             
             clear();
             drawLives();
@@ -820,13 +846,13 @@
             drawBombs();
             drawParticles();
             
-            movePlayer(deltaTime);
-            moveAliens(deltaTime);
-            moveBullets(deltaTime);
-            moveBombs(deltaTime);
-            alienShoot(deltaTime, currentTime);
+            movePlayer(cappedDelta);
+            moveAliens(cappedDelta);
+            moveBullets(cappedDelta);
+            moveBombs(cappedDelta);
+            alienShoot(cappedDelta, currentTime);
             detectCollisions(currentTime);
-            updateParticles(deltaTime);
+            updateParticles(cappedDelta);
             
             requestAnimationFrame(gameLoop);
         }
@@ -860,6 +886,7 @@
             createAliens();
             createShields();
             updateScore();
+            updateLives();
             updateLevel();
             document.getElementById('gameOver').style.display = 'none';
         }
