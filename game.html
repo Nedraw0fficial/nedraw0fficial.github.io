@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👾TEST SPACE INVADERS - Retro Space Arcade</title>
+    <title>👾 SPACE INVADERS - Retro Space Arcade</title>
     <link rel="stylesheet" href="style.css">
     <style>
         #gameCanvas {
@@ -155,44 +155,30 @@
 
     <script src="animations.js"></script>
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
+        // Wait for DOM to be ready
+        window.addEventListener('DOMContentLoaded', function() {
+            initGame();
+        });
+
+        let canvas, ctx;
         let gameRunning = false;
         let score = 0;
         let lives = 3;
         let level = 1;
         
-        // Visual effects
         let playerDamageTime = 0;
         let alienDamageFlash = new Map();
-        
-        // FPS independent timing
         let lastTime = 0;
         
-        // Player
-        let player = {
-            x: canvas.width / 2 - 20,
-            y: canvas.height - 70,
-            width: 40,
-            height: 25,
-            speed: 350,
-            dx: 0
-        };
-        
-        // Shooting
+        let player = {};
         let canShoot = true;
         let shootCooldown = 250;
         let lastShootTime = 0;
         
-        // Bullets
         let bullets = [];
         let bulletSpeed = 500;
-        
-        // Particles
         let particles = [];
         
-        // Alien types
         const ALIEN_TYPES = {
             SCOUT: {
                 name: 'SCOUT',
@@ -251,7 +237,6 @@
             }
         };
         
-        // Aliens
         let aliens = [];
         let alienSpeed = 40;
         let alienDirection = 1;
@@ -259,16 +244,33 @@
         let alienMoveTimer = 0;
         let alienMoveInterval = 600;
         
-        // Shields
         let shields = [];
         const SHIELD_WIDTH = 70;
         const SHIELD_HEIGHT = 50;
         const SHIELD_BLOCK_SIZE = 3;
         
-        // Keys
         let keys = {};
         
-        // Create explosion particles
+        function initGame() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            player = {
+                x: canvas.width / 2 - 20,
+                y: canvas.height - 70,
+                width: 40,
+                height: 25,
+                speed: 350,
+                dx: 0
+            };
+            
+            createAliens();
+            createShields();
+            updateScore();
+            updateLevel();
+            drawInitialState();
+        }
+        
         function createExplosion(x, y, color) {
             for (let i = 0; i < 15; i++) {
                 particles.push({
@@ -282,7 +284,6 @@
             }
         }
         
-        // Update particles
         function updateParticles(deltaTime) {
             particles = particles.filter(p => {
                 p.x += p.vx * (deltaTime / 1000);
@@ -292,7 +293,6 @@
             });
         }
         
-        // Draw particles
         function drawParticles() {
             particles.forEach(p => {
                 ctx.globalAlpha = p.life;
@@ -302,7 +302,6 @@
             ctx.globalAlpha = 1;
         }
         
-        // Get random alien type
         function getRandomAlienType(currentLevel) {
             const types = Object.values(ALIEN_TYPES);
             let weightedTypes = [];
@@ -346,7 +345,6 @@
             return weightedTypes[Math.floor(Math.random() * weightedTypes.length)];
         }
         
-        // Create shields
         function createShields() {
             shields = [];
             const shieldY = canvas.height - 130;
@@ -381,7 +379,6 @@
             }
         }
         
-        // Create aliens
         function createAliens() {
             aliens = [];
             alienDamageFlash.clear();
@@ -412,7 +409,6 @@
             }
         }
         
-        // Draw player
         function drawPlayer(currentTime) {
             const isDamaged = currentTime - playerDamageTime < 500;
             const flashRed = isDamaged && Math.floor(currentTime / 100) % 2 === 0;
@@ -429,7 +425,6 @@
             ctx.shadowBlur = 0;
         }
         
-        // Draw aliens
         function drawAliens(currentTime) {
             aliens.forEach((alien, aIndex) => {
                 if (!alien.alive) return;
@@ -498,7 +493,6 @@
             });
         }
         
-        // Draw lives
         function drawLives() {
             ctx.fillStyle = '#00F0FF';
             ctx.font = '14px Arial';
@@ -513,7 +507,6 @@
             ctx.shadowBlur = 0;
         }
         
-        // Draw shields
         function drawShields() {
             ctx.fillStyle = '#00FF00';
             shields.forEach(shield => {
@@ -530,7 +523,6 @@
             });
         }
         
-        // Draw bullets
         function drawBullets() {
             ctx.shadowBlur = 15;
             ctx.fillStyle = '#FFFF00';
@@ -541,7 +533,6 @@
             ctx.shadowBlur = 0;
         }
         
-        // Draw bombs
         function drawBombs() {
             ctx.shadowBlur = 15;
             alienBombs.forEach(bomb => {
@@ -562,7 +553,6 @@
             ctx.shadowBlur = 0;
         }
         
-        // Move player
         function movePlayer(deltaTime) {
             player.x += player.dx * (deltaTime / 1000);
             
@@ -572,7 +562,6 @@
             }
         }
         
-        // Move aliens
         function moveAliens(deltaTime) {
             alienMoveTimer += deltaTime;
             
@@ -604,7 +593,6 @@
             }
         }
         
-        // Move bullets
         function moveBullets(deltaTime) {
             bullets = bullets.filter(bullet => {
                 bullet.y -= bulletSpeed * (deltaTime / 1000);
@@ -612,7 +600,6 @@
             });
         }
         
-        // Move bombs
         function moveBombs(deltaTime) {
             alienBombs = alienBombs.filter(bomb => {
                 let speed = 180;
@@ -633,7 +620,6 @@
             });
         }
         
-        // Alien shooting
         function alienShoot(deltaTime, currentTime) {
             aliens.forEach(alien => {
                 if (!alien.alive) return;
@@ -682,9 +668,7 @@
             });
         }
         
-        // Collision detection
         function detectCollisions(currentTime) {
-            // Bullet hits alien
             bullets.forEach((bullet, bIndex) => {
                 aliens.forEach((alien, aIndex) => {
                     if (alien.alive &&
@@ -707,7 +691,6 @@
                 });
             });
             
-            // Bomb hits shield
             alienBombs.forEach((bomb, bIndex) => {
                 shields.forEach(shield => {
                     shield.blocks.forEach(block => {
@@ -735,7 +718,6 @@
                 });
             });
             
-            // Bomb hits player
             alienBombs.forEach((bomb, bIndex) => {
                 if (bomb.x < player.x + player.width &&
                     bomb.x + 3 > player.x &&
@@ -756,7 +738,6 @@
             }
         }
         
-        // Next level
         function nextLevel() {
             level++;
             alienSpeed += 2;
@@ -768,7 +749,6 @@
             alienBombs = [];
         }
         
-        // Update UI
         function updateScore() {
             document.getElementById('score').textContent = score;
         }
@@ -777,13 +757,11 @@
             document.getElementById('level').textContent = level;
         }
         
-        // Game over
         function gameOver() {
             gameRunning = false;
             document.getElementById('gameOver').style.display = 'block';
         }
         
-        // Clear canvas
         function clear() {
             ctx.fillStyle = '#0a0015';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -804,8 +782,8 @@
             }
         }
         
-        // Draw initial state
         function drawInitialState() {
+            if (!ctx) return;
             clear();
             drawLives();
             drawShields();
@@ -813,11 +791,9 @@
             drawAliens(0);
         }
         
-        // Game loop
         function gameLoop(currentTime) {
             if (!gameRunning) return;
             
-            // Handle first frame
             if (lastTime === 0) {
                 lastTime = currentTime;
                 requestAnimationFrame(gameLoop);
@@ -847,17 +823,15 @@
             requestAnimationFrame(gameLoop);
         }
         
-        // Start game
         function startGame() {
             if (!gameRunning) {
                 gameRunning = true;
-                lastTime = 0; // Reset to 0 so first frame is handled correctly
+                lastTime = 0;
                 document.getElementById('gameOver').style.display = 'none';
                 requestAnimationFrame(gameLoop);
             }
         }
         
-        // Reset game
         function resetGame() {
             gameRunning = false;
             score = 0;
@@ -882,7 +856,6 @@
             drawInitialState();
         }
         
-        // Keyboard controls
         document.addEventListener('keydown', (e) => {
             if (keys[e.key]) return;
             keys[e.key] = true;
@@ -919,13 +892,6 @@
                 player.dx = 0;
             }
         });
-        
-        // Initialize game on page load
-        createAliens();
-        createShields();
-        drawInitialState();
-        updateScore();
-        updateLevel();
     </script>
 </body>
 </html>
